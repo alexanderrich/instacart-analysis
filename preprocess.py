@@ -22,8 +22,6 @@ products_df_merged = (products_df
                       .merge(departments_df, on="department_id")
                       .merge(aisles_df, on="aisle_id"))
 
-products_df_merged.to_hdf("data/testing.h5", "table")
-
 
 # In[3]:
 
@@ -78,8 +76,67 @@ prior_df['num_products_ow_8'] = np.exp(-np.log(2)/8 * prior_df.reverse_order_num
 prior_df['num_products_ow_16'] = np.exp(-np.log(2)/16 * prior_df.reverse_order_number)
 prior_df['num_products_ow_32'] = np.exp(-np.log(2)/32 * prior_df.reverse_order_number)
 
+prior_df['num_products_dsin_14'] = np.sin(2*np.pi*(prior_df.reverse_date/14))
+prior_df['num_products_dcos_14'] = np.cos(2*np.pi*(prior_df.reverse_date/14))
+prior_df['num_products_dsin_30'] = np.sin(2*np.pi*(prior_df.reverse_date/30))
+prior_df['num_products_dcos_30'] = np.cos(2*np.pi*(prior_df.reverse_date/30))
 
 # In[10]:
+
+prior_day_idx = prior_df[['user_id', 'order_id', 'product_id']].join(pd.get_dummies(prior_df.order_dow))
+
+product_day_idx = (prior_day_idx.drop(['user_id', 'order_id'], axis=1)
+                   .groupby("product_id").agg(np.mean).reset_index()
+                   .melt(id_vars='product_id', var_name="day", value_name="product_day_proportion"))
+product_day_idx.day = product_day_idx.day.astype(int)
+
+individual_day_idx = (prior_day_idx.drop(['product_id'], axis=1)
+                   .groupby(['user_id', 'order_id']).agg(np.mean).reset_index()
+                     .drop(['order_id'], axis=1).groupby('user_id').agg(np.mean).reset_index()
+                   .melt(id_vars='user_id', var_name="day", value_name="individual_day_proportion"))
+individual_day_idx.day = individual_day_idx.day.astype(int)
+
+
+indprod_day_idx = (prior_day_idx.drop(['order_id'], axis=1)
+                   .groupby(['user_id', 'product_id']).agg(np.mean).reset_index()
+                   .melt(id_vars=['user_id', 'product_id'], var_name="day", value_name="indprod_day_proportion"))
+indprod_day_idx.day = indprod_day_idx.day.astype(int)
+
+indprod_day_idx.rename(columns={'day': 'order_dow'}, inplace=True)
+product_day_idx.rename(columns={'day': 'order_dow'}, inplace=True)
+individual_day_idx.rename(columns={'day': 'order_dow'}, inplace=True)
+
+prior_hod_idx = prior_df[['user_id', 'order_id', 'product_id']].join(pd.get_dummies(prior_df.order_hour_of_day))
+
+prior_hod_idx_orig = prior_hod_idx
+prior_hod_idx = prior_hod_idx.copy()
+
+for i in range(24):
+    prior_hod_idx[i] = prior_hod_idx_orig[(i - 1) % 24] + prior_hod_idx_orig[i] + prior_hod_idx_orig[(i + 1) % 24]
+
+del prior_hod_idx_orig
+
+product_hod_idx = (prior_hod_idx.drop(['user_id', 'order_id'], axis=1)
+                   .groupby("product_id").agg(np.mean).reset_index()
+                   .melt(id_vars='product_id', var_name="hod", value_name="product_hod_proportion"))
+product_hod_idx.hod = product_hod_idx.hod.astype(int)
+
+individual_hod_idx = (prior_hod_idx.drop(['product_id'], axis=1)
+                   .groupby(['user_id', 'order_id']).agg(np.mean).reset_index()
+                     .drop(['order_id'], axis=1).groupby('user_id').agg(np.mean).reset_index()
+                   .melt(id_vars='user_id', var_name="hod", value_name="individual_hod_proportion"))
+individual_hod_idx.hod = individual_hod_idx.hod.astype(int)
+
+indprod_hod_idx = (prior_hod_idx.drop(['order_id'], axis=1)
+                   .groupby(['user_id', 'product_id']).agg(np.mean).reset_index()
+                   .melt(id_vars=['user_id', 'product_id'], var_name="hod", value_name="indprod_hod_proportion"))
+indprod_hod_idx.hod = indprod_hod_idx.hod.astype(int)
+
+indprod_hod_idx.rename(columns={'hod': 'order_hour_of_day'}, inplace=True)
+product_hod_idx.rename(columns={'hod': 'order_hour_of_day'}, inplace=True)
+individual_hod_idx.rename(columns={'hod': 'order_hour_of_day'}, inplace=True)
+
+
 
 prior_product_stats = prior_df.groupby("product_id").agg({'order_dow_sin': np.sum, 
                                                                 'order_dow_cos': np.sum, 
@@ -180,11 +237,15 @@ prior_indprod_stats = prior_indprod_stats.groupby(["user_id", "product_id"]).agg
                                                                 'num_products_dw_32': np.sum,
                                                                 'num_products_dw_64': np.sum,
                                                                 'num_products_dw_128': np.sum,
+                                                                'num_products_dcos_14': np.sum,
+                                                                'num_products_dsin_14': np.sum,
+                                                                'num_products_dcos_30': np.sum,
+                                                                'num_products_dsin_30': np.sum,
                                                                 'num_products_ow_2': np.sum,           
                                                                 'num_products_ow_4': np.sum,
                                                                 'num_products_ow_8': np.sum,                  
                                                                 'num_products_ow_16': np.sum,
-                                                                'num_products_ow_32': np.sum,                                   
+                                                                'num_products_ow_32': np.sum,
                                                            'add_to_cart_order': np.mean,
                                                            'add_to_cart_proportion': np.mean,
                                                            'indprod_inorder_1': np.sum,
@@ -220,7 +281,9 @@ prior_indprod_stats.columns = ['user_id', 'product_id', 'indprod_dow_sin',
                                'indprod_hod_cos', 'indprod_num_products',
                                'indprod_num_products_dw_8', 'indprod_num_products_dw_16', 
                                'indprod_num_products_dw_32', 'indprod_num_products_dw_64', 
-                               'indprod_num_products_dw_128', 'indprod_num_products_ow_2',
+                               'indprod_num_products_dw_128', 'num_products_dcos_14',
+                               'num_products_dsin_14', 'num_products_dcos_30',
+                               'num_products_dsin_30', 'indprod_num_products_ow_2',
                                'indprod_num_products_ow_4', 'indprod_num_products_ow_8',
                                'indprod_num_products_ow_16', 'indprod_num_products_ow_32',
                                'indprod_add_to_cart_order', 'indprod_add_to_cart_proportion',
@@ -261,15 +324,29 @@ orders_df_last['order_hod_cos'] = np.cos(orders_df_last.order_hod_angle)
 
 # In[26]:
 
-orders_df_last.drop(["order_number", "order_dow", "order_hour_of_day", "order_dow_angle", "order_hod_angle"], axis=1, inplace=True)
+orders_df_last.drop(["order_number", "order_dow_angle", "order_hod_angle"], axis=1, inplace=True)
 
 
 # In[27]:
 
 prior_all_stats = prior_all_stats.merge(orders_df_last, on="user_id", how="inner")
 
+prior_all_stats = prior_all_stats.merge(individual_day_idx, on=['user_id', 'order_dow'])
+prior_all_stats = prior_all_stats.merge(product_day_idx, on=['product_id', 'order_dow'])
+prior_all_stats = prior_all_stats.merge(indprod_day_idx, on=['user_id', 'product_id', 'order_dow'])
 
+prior_all_stats = prior_all_stats.merge(individual_hod_idx, on=['user_id', 'order_hour_of_day'])
+prior_all_stats = prior_all_stats.merge(product_hod_idx, on=['product_id', 'order_hour_of_day'])
+prior_all_stats = prior_all_stats.merge(indprod_hod_idx, on=['user_id', 'product_id', 'order_hour_of_day'])
+
+del individual_hod_idx
+del product_hod_idx
+del indprod_hod_idx
+del individual_day_idx
+del product_day_idx
+del indprod_day_idx
 # In[28]:
+prior_all_stats.drop(['order_hour_of_day', 'order_dow'], axis=1, inplace=True)
 
 products_df_merged = products_df_merged.join(pd.get_dummies(products_df_merged.aisle))
 
