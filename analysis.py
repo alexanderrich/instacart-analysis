@@ -11,18 +11,6 @@ import pandas as pd
 
 prior_all_stats = pd.read_hdf("data/prior_all_stats.h5", "table")
 
-
-# In[32]:
-
-# split into train, validation, and test sets
-#prior_all_stats['validation_set'] = 0
-#prior_all_stats['prediction'] = 0
-#valid_users = prior_all_stats.loc[prior_all_stats.eval_set == "train", "user_id"].unique()
-#valid_users = pd.Series(valid_users).sample(frac=.1, random_state=1234)
-
-
-# In[36]:
-
 prior_all_stats['prediction'] = 0
 all_users = prior_all_stats.loc[prior_all_stats.eval_set == "train", "user_id"].unique()
 np.random.seed(1234)
@@ -31,7 +19,7 @@ np.random.shuffle(all_users)
 
 # In[53]:
 
-valid_set = pd.DataFrame({'user_id': all_users, 'validation_set': np.arange(0, all_users.shape[0]) % 10})
+valid_set = pd.DataFrame({'user_id': all_users, 'validation_set': np.arange(0, all_users.shape[0]) % 11})
 
 
 # In[56]:
@@ -47,38 +35,58 @@ prior_all_stats.validation_set = prior_all_stats.validation_set.fillna(-1)
 # all_none = []
 
 import xgboost as xgb
-prior_test = prior_all_stats.loc[prior_all_stats.eval_set == "test"]
-d_test = xgb.DMatrix(prior_test.drop(["prediction", "eval_set", "validation_set", "order_id", "reordered", "user_id", "product_id"], axis=1).as_matrix())
+prior_test = prior_all_stats.loc[prior_all_stats.eval_set == "test", :]
+d_test = xgb.DMatrix(prior_test.drop(["prediction", "eval_set", "validation_set", "order_id", "reordered", "user_id", "product_id"], axis=1).as_matrix(),
+                            feature_names=prior_test.drop(["prediction", "eval_set", "validation_set", "order_id", "reordered", "user_id", "product_id"], axis=1).columns.values.tolist(),
+                     )
 
 
-for v in range(3,10):
-    prior_train = prior_all_stats.loc[(prior_all_stats.eval_set == "train") & (prior_all_stats.validation_set != v)]
-    prior_valid = prior_all_stats.loc[prior_all_stats.validation_set == v]
+for v in range(10):
+    prior_train = prior_all_stats.loc[(prior_all_stats.eval_set == "train") & (prior_all_stats.validation_set != v) & (prior_all_stats.validation_set != 10), :]
+    prior_valid = prior_all_stats.loc[prior_all_stats.validation_set == v, :]
+    prior_valid_2 = prior_all_stats.loc[prior_all_stats.validation_set == 10, :]
 
-    d_train = xgb.DMatrix(prior_train.drop(["prediction", "eval_set", "validation_set", "order_id", "reordered", "user_id", "product_id"], axis=1).as_matrix(), label=prior_train.reordered.as_matrix())
-    d_valid = xgb.DMatrix(prior_valid.drop(["prediction", "eval_set", "validation_set", "order_id", "reordered", "user_id", "product_id"], axis=1).as_matrix(), label=prior_valid.reordered.as_matrix())
+    d_train = xgb.DMatrix(prior_train.drop(["prediction", "eval_set", "validation_set", "order_id", "reordered", "user_id", "product_id"], axis=1).values,
+                          feature_names=prior_train.drop(["prediction", "eval_set", "validation_set", "order_id", "reordered", "user_id", "product_id"], axis=1).columns.values.tolist(),
+                          label=prior_train.reordered.as_matrix())
+    d_valid = xgb.DMatrix(prior_valid.drop(["prediction", "eval_set", "validation_set", "order_id", "reordered", "user_id", "product_id"], axis=1).values,
+                          feature_names=prior_valid.drop(["prediction", "eval_set", "validation_set", "order_id", "reordered", "user_id", "product_id"], axis=1).columns.values.tolist(),
+                          label=prior_valid.reordered.as_matrix())
+    d_valid_2 = xgb.DMatrix(prior_valid_2.drop(["prediction", "eval_set", "validation_set", "order_id", "reordered", "user_id", "product_id"], axis=1).values,
+                            feature_names=prior_valid_2.drop(["prediction", "eval_set", "validation_set", "order_id", "reordered", "user_id", "product_id"], axis=1).columns.values.tolist(),
+                            label=prior_valid_2.reordered.as_matrix())
 
     # Set our parameters for xgboost
     params = {}
     params['objective'] = 'binary:logistic'
     params['eval_metric'] = 'auc'
     params['eta'] = 0.1
-    params['max_depth'] = 6
+    params['max_depth'] = 8
     params['nthread'] = 12
+    params['subsample'] = .8
+    params['colsample_bytree'] = .8
 
     watchlist = [(d_train, 'train'), (d_valid, 'valid')]
 
-    # bst = xgb.train(params, d_train, 1000, watchlist, early_stopping_rounds=50, verbose_eval=10)
+    bst = xgb.train(params, d_train, 1000, watchlist, early_stopping_rounds=50, verbose_eval=10)
 
-    # bst.save_model('multi_xgb' + str(v) + '.model')
+    bst.save_model('glove_xgb' + str(v) + '.model')
 
-    bst = xgb.Booster()
-    bst.load_model('multi_xgb' + str(v) +  '.model')
+    # bst = xgb.Booster()
+    # bst.load_model('multi_xgb' + str(v) +  '.model')
+
+    prior_all_stats.loc[prior_all_stats.eval_set == "test", 'prediction'] = bst.predict(d_test)
+    prior_all_stats.loc[(prior_all_stats.eval_set == "train") & (prior_all_stats.validation_set != v) & (prior_all_stats.validation_set != 10), 'prediction'] = bst.predict(d_train)
+    prior_all_stats.loc[prior_all_stats.validation_set == v, 'prediction'] = bst.predict(d_valid)
+    prior_all_stats.loc[prior_all_stats.validation_set == 10, 'prediction'] = bst.predict(d_valid_2)
+
+    raw_output = prior_all_stats.loc[:,['prediction', 'eval_set', 'validation_set', 'order_id', 'product_id', 'user_id', 'user_distinct_products', 'reordered']]
+    raw_output.to_csv("rawpredictions/glove_" + str(v) + ".csv", index=False)
 
 
     y_predicted = bst.predict(d_valid)
 
-    prior_valid = prior_valid.copy()
+    # prior_valid = prior_valid.copy()
 
     threshold_df = prior_valid.loc[:, ['user_id', 'user_distinct_products', 'prediction', 'reordered']].copy()
 
@@ -122,28 +130,28 @@ for v in range(3,10):
     print("best none cutoff:", best_none_cutoff)
     print("best f1:", best_cutoff_f1)
 
-    y_test = bst.predict(d_test)
-    # all_reorder_cutoffs.append(best_reorder_cutoff)
-    # all_none_cutoffs.append(best_none_cutoff)
-    prior_test = prior_test.copy()
-    prior_test['prediction'] = 1 * (y_test > 1.0 / (1 + np.exp(-best_reorder_cutoff[0] - best_reorder_cutoff[1] * np.log(prior_test.user_distinct_products))))
-    prior_test['p_not'] = 1 - y_test
+    # y_test = bst.predict(d_test)
+    # # all_reorder_cutoffs.append(best_reorder_cutoff)
+    # # all_none_cutoffs.append(best_none_cutoff)
+    # prior_test = prior_test.copy()
+    # prior_test['prediction'] = 1 * (y_test > 1.0 / (1 + np.exp(-best_reorder_cutoff[0] - best_reorder_cutoff[1] * np.log(prior_test.user_distinct_products))))
+    # prior_test['p_not'] = 1 - y_test
 
-    writenone_df = prior_test.groupby('order_id').agg({'p_not': np.prod,
-                                                       'prediction': np.sum,
-                                                       'user_distinct_products': np.mean}).reset_index()
-    writenone_df['putnone'] = ((writenone_df.p_not > 1.0 / (1 + np.exp(-best_none_cutoff[0] - best_none_cutoff[1] * np.log(writenone_df.user_distinct_products)))) | (writenone_df.prediction == 0))
-    writenone_df['nonestring'] = ''
-    writenone_df.loc[writenone_df.putnone, 'nonestring'] = 'None'
+    # writenone_df = prior_test.groupby('order_id').agg({'p_not': np.prod,
+    #                                                    'prediction': np.sum,
+    #                                                    'user_distinct_products': np.mean}).reset_index()
+    # writenone_df['putnone'] = ((writenone_df.p_not > 1.0 / (1 + np.exp(-best_none_cutoff[0] - best_none_cutoff[1] * np.log(writenone_df.user_distinct_products)))) | (writenone_df.prediction == 0))
+    # writenone_df['nonestring'] = ''
+    # writenone_df.loc[writenone_df.putnone, 'nonestring'] = 'None'
 
-    prediction_df = prior_test[prior_test['prediction'] == 1].copy()
-    prediction_df = prediction_df[['order_id', 'product_id']]
+    # prediction_df = prior_test[prior_test['prediction'] == 1].copy()
+    # prediction_df = prediction_df[['order_id', 'product_id']]
 
 
-    prediction_lists = prediction_df.groupby('order_id').agg(lambda x: " ".join(x.astype(str))).reset_index()
-    prediction_lists = prediction_lists.merge(writenone_df[['order_id', 'nonestring']], on='order_id', how='right')
-    prediction_lists['products'] = prediction_lists.product_id.fillna('')
-    prediction_lists['products'] = prediction_lists.products + " " + prediction_lists.nonestring
+    # prediction_lists = prediction_df.groupby('order_id').agg(lambda x: " ".join(x.astype(str))).reset_index()
+    # prediction_lists = prediction_lists.merge(writenone_df[['order_id', 'nonestring']], on='order_id', how='right')
+    # prediction_lists['products'] = prediction_lists.product_id.fillna('')
+    # prediction_lists['products'] = prediction_lists.products + " " + prediction_lists.nonestring
 
-    prediction_lists = prediction_lists[['order_id', 'products']]
-    prediction_lists.to_csv("submissions/multi_xgb" + str(v) + ".csv", index=False)
+    # prediction_lists = prediction_lists[['order_id', 'products']]
+    # prediction_lists.to_csv("submissions/rawpredictions_xgb" + str(v) + ".csv", index=False)
