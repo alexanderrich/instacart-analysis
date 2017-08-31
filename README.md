@@ -128,10 +128,12 @@ I had started using it sooned, I might have been able to do more experimentation
 # Sh1ng solution features and model
 
 In the final week of the competition, a competitor going by username sh1ng
-released his entire solution code. To maintain competitiveness, I used this
-model along with the models I trained on my own features. I forked the sh1ng
-model and made a few small modifications so that it would include the "extra"
-training data and run using the same 10-fold structure I used for my other models.
+[released](https://www.kaggle.com/c/instacart-market-basket-analysis/discussion/37697)
+his [solution code](https://github.com/sh1ng/imba). To maintain
+competitiveness, I used this model along with the models I trained on my own
+features. I forked the sh1ng model and made a few small modifications so that it
+would include the "extra" training data and run using the same 10-fold structure
+I used for my other models.
 
 # Model averaging
 
