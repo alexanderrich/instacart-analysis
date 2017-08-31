@@ -1,13 +1,12 @@
 # Instacart Market Basket Analysis, 23rd Place Solution
 
 This repository contains scripts to produce the 23rd place solution
-to Kaggle's Instacart Market Basket Analysis prediction competition. 
+to Kaggle's [Instacart Market Basket Analysis](https://www.kaggle.com/c/instacart-market-basket-analysis) prediction competition. 
 
 The code was run using python 3.5 and requires numpy, pandas, scikit-learn,
 xgboost, lightgbm, and numba. To run the complete solution, download the data
-files from kaggle and type `sh runall.sh`. Running the scripts will require
-around 64GB RAM. You might also find that running `purge` between model folds is
-helpful if the memory isn't released immediately after each fold.
+files from kaggle into the `data` folder and execute `runall.sh`. Running the scripts will require
+around 64GB RAM. 
 
 # Data and objective
 
